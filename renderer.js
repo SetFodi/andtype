@@ -381,18 +381,24 @@ function moveToNextWord() {
     state.currentLetterIndex = 0;
     elements.inputField.value = '';
 
-    // Infinite Words Logic for Time Mode
+    // Infinite Words Logic for Time Mode - MORE AGGRESSIVE
     if (state.mode === 'time') {
         const wordsRemaining = state.words.length - state.currentWordIndex;
-        if (wordsRemaining < 50) {
-            addMoreWords();
+        // Increase buffer to 100 to ensure we NEVER run out
+        if (wordsRemaining < 100) {
+            addMoreWords(); // Adds 50 words
         }
     } else if (state.mode === 'words' && state.currentWordIndex >= state.wordLimit) {
         finishTest();
         return;
     }
 
-    updateCaretPosition();
+    // Force DOM update flow: Scroll -> Render -> Cursor
+    // We already called updateScrollPosition().
+    // Now update cursor.
+    requestAnimationFrame(() => {
+        updateCaretPosition();
+    });
 }
 
 function updateScrollPosition() {
@@ -405,28 +411,25 @@ function updateScrollPosition() {
     // Calculate relative position from top of container
     const relativeTop = wordReq.top - containerReq.top;
 
-    // MonkeyType Style: If word is visually on the 2nd line (approx > 50px from top),
-    // Scroll the CONTAINER so that this line becomes the FIRST line.
-
-    // Use a threshold roughly equal to one line height + padding (approx 45-60px)
+    // MonkeyType Style: If word is strictly on the 2nd line or below
+    // (Line height approx 40-50px. 2nd line starts around 50px+)
     if (relativeTop > 50) {
         const currentScroll = elements.wordsContainer.scrollTop;
-        // We scroll down exactly the amount needed to bring this row to the top
-        // But we keep a tiny margin (10px) just in case
-        const scrollDelta = relativeTop - 10;
+        // Scroll exactly one line worth (approx relativeTop)
+        // logic: we want relativeTop to become ~0 (top line)
+        const scrollDelta = relativeTop;
 
         elements.wordsContainer.scrollTo({
             top: currentScroll + scrollDelta,
             behavior: 'smooth'
         });
 
-        // Visual Cleanup: Fade out ALL previous lines to give that "focus" effect
-        // Identifying previous lines by index is safest
-        const allWords = Array.from(elements.wordsContainer.children);
-        allWords.forEach(child => {
-            const idx = parseInt(child.dataset.index);
-            if (idx < state.currentWordIndex) {
-                // Fade out fully scroll-past words
+        // Clean up: Fade out words that are scrolled out (previous lines)
+        // We can check indices.
+        // Important: Only fade words that are STRICTLY before the current line.
+        // Simple heuristic: Fade all words before current index
+        Array.from(elements.wordsContainer.children).forEach(child => {
+            if (parseInt(child.dataset.index) < state.currentWordIndex) {
                 child.style.opacity = '0.5';
             }
         });
@@ -459,9 +462,13 @@ function updateCaretPosition() {
     // Safety checks
     if (!elements.wordsContainer || !state.words.length) return;
 
-    const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
-    if (!currentWordDiv) return;
+    // Check if index is valid
+    if (!elements.wordsContainer.children[state.currentWordIndex]) {
+        // If we ran out of words (shouldn't happen with infinite scroll), return or reset
+        return;
+    }
 
+    const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
     const letters = currentWordDiv.querySelectorAll('.letter');
 
     // Determine position

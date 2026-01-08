@@ -568,8 +568,7 @@ body {
   height: 160px;
   /* 3 lines roughly */
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+  /* mask-image removed to prevent fading active line */
 }
 
 .words {
