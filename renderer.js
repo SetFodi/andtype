@@ -352,15 +352,21 @@ function handleInput(e) {
 function moveToNextWord() {
     const currentInput = elements.inputField.value.trim();
     const targetWord = state.words[state.currentWordIndex];
+    let wordCorrectChars = 0;
 
     // Calculate stats for this word
     for (let i = 0; i < targetWord.length; i++) {
         if (currentInput[i] === targetWord[i]) {
-            state.correctChars++;
+            wordCorrectChars++;
         } else {
             state.incorrectChars++;
         }
     }
+
+    state.correctChars += wordCorrectChars;
+    // Count the spacebar as a correct character if we are moving to next word
+    state.correctChars++;
+
     // Penalize missing chars
     if (currentInput.length < targetWord.length) {
         state.incorrectChars += (targetWord.length - currentInput.length);
@@ -421,18 +427,30 @@ function addMoreWords() {
 }
 
 function updateCaretPosition() {
-    const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
-    if (!currentWordDiv) return;
+    // Safety check
+    if (!elements.wordsContainer.children[state.currentWordIndex]) return;
 
+    const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
     const letters = currentWordDiv.querySelectorAll('.letter');
-    let targetEl = letters[state.currentLetterIndex];
+
+    // Safety check for letters array
+    if (!letters) return;
+
+    // Clamp index to prevent errors
+    const safeIndex = Math.min(state.currentLetterIndex, letters.length);
+    let targetEl = letters[safeIndex];
+
+    // transitions
+    elements.caret.style.transition = 'left 0.1s ease-out, top 0.1s ease-out';
 
     if (!targetEl) {
+        // If typing beyond word length, stay at end
         if (letters.length > 0) {
             const last = letters[letters.length - 1];
             elements.caret.style.left = (last.offsetLeft + last.offsetWidth) + 'px';
             elements.caret.style.top = last.offsetTop + 'px';
         } else {
+            // Empty word case (rare)
             elements.caret.style.left = currentWordDiv.offsetLeft + 'px';
             elements.caret.style.top = currentWordDiv.offsetTop + 'px';
         }
@@ -442,18 +460,36 @@ function updateCaretPosition() {
     }
 }
 
+function getCorrectCharsInCurrentWord() {
+    if (!state.isStarted) return 0;
+    const currentInput = elements.inputField.value;
+    const currentWord = state.words[state.currentWordIndex];
+    let correct = 0;
+    const len = Math.min(currentInput.length, currentWord.length);
+    for (let i = 0; i < len; i++) {
+        if (currentInput[i] === currentWord[i]) correct++;
+    }
+    return correct;
+}
+
 function updateLiveStats() {
     const timeInMin = (Date.now() - state.startTime) / 60000;
     if (timeInMin > 0) {
-        const wpm = Math.floor((state.correctChars / 5) / timeInMin);
+        // Include correctly typed chars from the CURRENT word for live accuracy
+        const currentWordCorrect = getCorrectCharsInCurrentWord();
+        const totalCorrect = state.correctChars + currentWordCorrect;
+
+        const wpm = Math.floor((totalCorrect / 5) / timeInMin);
         state.rawWpm = wpm;
         elements.wpmDisplay.textContent = wpm;
     }
 
     // Accuracy
-    const totalTyped = state.correctChars + state.incorrectChars;
+    const totalTyped = state.correctChars + state.incorrectChars + elements.inputField.value.length;
     if (totalTyped > 0) {
-        const acc = Math.floor((state.correctChars / totalTyped) * 100);
+        const currentWordCorrect = getCorrectCharsInCurrentWord();
+        const totalCorrect = state.correctChars + currentWordCorrect;
+        const acc = Math.floor((totalCorrect / totalTyped) * 100);
         elements.accuracyDisplay.textContent = acc;
     }
 }
@@ -462,18 +498,29 @@ function finishTest() {
     clearInterval(state.timerInterval);
     state.isFinished = true;
 
-    // Final Stats Calculation
     const timeTotalSeconds = (Date.now() - state.startTime) / 1000;
     const timeInMin = timeTotalSeconds / 60;
-    const finalWpm = Math.round((state.correctChars / 5) / timeInMin);
-    const totalTyped = state.correctChars + state.incorrectChars;
-    const acc = totalTyped > 0 ? Math.round((state.correctChars / totalTyped) * 100) : 100;
+
+    // Final check includes current word only if fully correct?
+    // Actually standard WPM counts all correct key presses.
+    // But 'finishTest' usually implies time valid or word limit reached.
+    // We will stick to the accumulated 'state.correctChars' which are validated words.
+    // BUT if time ran out mid-word, we should count those chars?
+    // Standard practice: Count only fully recognized words or chars?
+    // MonkeyType counts chars.
+
+    const currentWordCorrect = getCorrectCharsInCurrentWord();
+    const finalTotalCorrect = state.correctChars + currentWordCorrect;
+
+    const finalWpm = Math.round((finalTotalCorrect / 5) / timeInMin);
+    const totalTyped = state.correctChars + state.incorrectChars + elements.inputField.value.length;
+    const acc = totalTyped > 0 ? Math.round((finalTotalCorrect / totalTyped) * 100) : 100;
 
     saveUserStats(finalWpm, acc);
 
     elements.finalWpm.textContent = finalWpm;
     elements.finalAccuracy.textContent = acc + '%';
-    elements.finalChars.textContent = `${state.correctChars}/${totalTyped}`; // Simplified for clarity
+    elements.finalChars.textContent = `${finalTotalCorrect}/${totalTyped}`;
     elements.finalTime.textContent = Math.round(timeTotalSeconds) + 's';
 
     elements.resultsModal.classList.add('show');
