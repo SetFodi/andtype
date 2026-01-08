@@ -372,23 +372,10 @@ function moveToNextWord() {
         state.incorrectChars += (targetWord.length - currentInput.length);
     }
 
+    // Scroll Logic (Smooth "MonkeyType" style)
+    updateScrollPosition();
+
     state.totalCharCount += targetWord.length + 1;
-
-    // Scroll lines if needed
-    const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
-    const nextWordDiv = elements.wordsContainer.children[state.currentWordIndex + 1];
-
-    if (currentWordDiv && nextWordDiv && currentWordDiv.offsetTop < nextWordDiv.offsetTop) {
-        if (currentWordDiv.offsetTop > 60) {
-            const scrollAmount = currentWordDiv.offsetTop - 10;
-            elements.wordsContainer.scrollTop = scrollAmount;
-            Array.from(elements.wordsContainer.children).forEach(child => {
-                if (child.dataset.index < state.currentWordIndex) {
-                    child.style.opacity = '0.5';
-                }
-            });
-        }
-    }
 
     state.currentWordIndex++;
     state.currentLetterIndex = 0;
@@ -401,6 +388,39 @@ function moveToNextWord() {
         if (state.mode === 'time' && state.currentWordIndex > state.words.length - 20) {
             addMoreWords();
         }
+    }
+}
+
+function updateScrollPosition() {
+    const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
+    if (!currentWordDiv) return;
+
+    const containerReq = elements.wordsContainer.getBoundingClientRect();
+    const wordReq = currentWordDiv.getBoundingClientRect();
+
+    // Calculate relative position from top of container
+    const relativeTop = wordReq.top - containerReq.top;
+
+    // If word is on the second line (approx > 50px), scroll down one line
+    // We assume a line height of roughly 40-50px
+    if (relativeTop > 60) {
+        // Find how much to scroll: difference between current offset and "top" offset
+        // We want the current line to become the top line (or close to it)
+        const currentScroll = elements.wordsContainer.scrollTop;
+        const targetScroll = currentScroll + (relativeTop - 10); // 10px buffer
+
+        elements.wordsContainer.scrollTo({
+            top: targetScroll,
+            behavior: 'smooth'
+        });
+
+        // Clean up: Fade out words that are scrolled out (previous lines)
+        // We can check indices
+        Array.from(elements.wordsContainer.children).forEach(child => {
+            if (parseInt(child.dataset.index) < state.currentWordIndex) {
+                child.style.opacity = '0.5';
+            }
+        });
     }
 }
 
@@ -440,8 +460,9 @@ function updateCaretPosition() {
     const safeIndex = Math.min(state.currentLetterIndex, letters.length);
     let targetEl = letters[safeIndex];
 
-    // transitions
-    elements.caret.style.transition = 'left 0.1s ease-out, top 0.1s ease-out';
+    // transitions - REMOVED 'left' transition for instant responsiveness
+    // Only animate 'top' for line jumps, or keep it snappy.
+    elements.caret.style.transition = 'top 0.1s ease-out';
 
     if (!targetEl) {
         // If typing beyond word length, stay at end
