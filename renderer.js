@@ -381,14 +381,18 @@ function moveToNextWord() {
     state.currentLetterIndex = 0;
     elements.inputField.value = '';
 
-    if (state.mode === 'words' && state.currentWordIndex >= state.wordLimit) {
-        finishTest();
-    } else {
-        updateCaretPosition();
-        if (state.mode === 'time' && state.currentWordIndex > state.words.length - 20) {
+    // Infinite Words Logic for Time Mode
+    if (state.mode === 'time') {
+        const wordsRemaining = state.words.length - state.currentWordIndex;
+        if (wordsRemaining < 50) {
             addMoreWords();
         }
+    } else if (state.mode === 'words' && state.currentWordIndex >= state.wordLimit) {
+        finishTest();
+        return;
     }
+
+    updateCaretPosition();
 }
 
 function updateScrollPosition() {
@@ -401,23 +405,28 @@ function updateScrollPosition() {
     // Calculate relative position from top of container
     const relativeTop = wordReq.top - containerReq.top;
 
-    // If word is on the second line (approx > 50px), scroll down one line
-    // We assume a line height of roughly 40-50px
-    if (relativeTop > 60) {
-        // Find how much to scroll: difference between current offset and "top" offset
-        // We want the current line to become the top line (or close to it)
+    // MonkeyType Style: If word is visually on the 2nd line (approx > 50px from top),
+    // Scroll the CONTAINER so that this line becomes the FIRST line.
+
+    // Use a threshold roughly equal to one line height + padding (approx 45-60px)
+    if (relativeTop > 50) {
         const currentScroll = elements.wordsContainer.scrollTop;
-        const targetScroll = currentScroll + (relativeTop - 10); // 10px buffer
+        // We scroll down exactly the amount needed to bring this row to the top
+        // But we keep a tiny margin (10px) just in case
+        const scrollDelta = relativeTop - 10;
 
         elements.wordsContainer.scrollTo({
-            top: targetScroll,
+            top: currentScroll + scrollDelta,
             behavior: 'smooth'
         });
 
-        // Clean up: Fade out words that are scrolled out (previous lines)
-        // We can check indices
-        Array.from(elements.wordsContainer.children).forEach(child => {
-            if (parseInt(child.dataset.index) < state.currentWordIndex) {
+        // Visual Cleanup: Fade out ALL previous lines to give that "focus" effect
+        // Identifying previous lines by index is safest
+        const allWords = Array.from(elements.wordsContainer.children);
+        allWords.forEach(child => {
+            const idx = parseInt(child.dataset.index);
+            if (idx < state.currentWordIndex) {
+                // Fade out fully scroll-past words
                 child.style.opacity = '0.5';
             }
         });
@@ -447,37 +456,38 @@ function addMoreWords() {
 }
 
 function updateCaretPosition() {
-    // Safety check
-    if (!elements.wordsContainer.children[state.currentWordIndex]) return;
+    // Safety checks
+    if (!elements.wordsContainer || !state.words.length) return;
 
     const currentWordDiv = elements.wordsContainer.children[state.currentWordIndex];
+    if (!currentWordDiv) return;
+
     const letters = currentWordDiv.querySelectorAll('.letter');
 
-    // Safety check for letters array
-    if (!letters) return;
+    // Determine position
+    // If we are at the start of a word (index 0)
+    if (state.currentLetterIndex === 0) {
+        elements.caret.style.left = currentWordDiv.offsetLeft + 'px';
+        elements.caret.style.top = currentWordDiv.offsetTop + 'px';
+        return;
+    }
 
-    // Clamp index to prevent errors
-    const safeIndex = Math.min(state.currentLetterIndex, letters.length);
-    let targetEl = letters[safeIndex];
+    // If we have typed some valid letters
+    // Ensure we don't go out of bounds of the actual word DOM
+    // (If user types extra chars that are not in DOM, we clamp to the end of the word)
+    const clampIndex = Math.min(state.currentLetterIndex, letters.length);
 
-    // transitions - REMOVED 'left' transition for instant responsiveness
-    // Only animate 'top' for line jumps, or keep it snappy.
-    elements.caret.style.transition = 'top 0.1s ease-out';
-
-    if (!targetEl) {
-        // If typing beyond word length, stay at end
-        if (letters.length > 0) {
-            const last = letters[letters.length - 1];
-            elements.caret.style.left = (last.offsetLeft + last.offsetWidth) + 'px';
-            elements.caret.style.top = last.offsetTop + 'px';
-        } else {
-            // Empty word case (rare)
-            elements.caret.style.left = currentWordDiv.offsetLeft + 'px';
-            elements.caret.style.top = currentWordDiv.offsetTop + 'px';
+    if (clampIndex > 0) {
+        // Position AFTER the last typed character
+        const prevChar = letters[clampIndex - 1];
+        if (prevChar) {
+            elements.caret.style.left = (prevChar.offsetLeft + prevChar.offsetWidth) + 'px';
+            elements.caret.style.top = prevChar.offsetTop + 'px';
         }
     } else {
-        elements.caret.style.left = targetEl.offsetLeft + 'px';
-        elements.caret.style.top = targetEl.offsetTop + 'px';
+        // Fallback
+        elements.caret.style.left = currentWordDiv.offsetLeft + 'px';
+        elements.caret.style.top = currentWordDiv.offsetTop + 'px';
     }
 }
 
